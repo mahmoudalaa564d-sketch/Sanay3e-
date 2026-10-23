@@ -1,0 +1,14 @@
+
+.vs/
+**/bin/
+**/obj/
+**/Properties/PublishProfiles/
+**/*.user
+**/*.suo
+**/appsettings.Development.json
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+Sanay3y.API/appsettings.json
