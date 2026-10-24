@@ -16,7 +16,7 @@ namespace Sanay3y.API
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            // قراءة إعدادات JWT من appsettings أو متغيرات البيئة.
+            // JWT configuration
             var jwtKey = builder.Configuration["Jwt:Key"]
                 ?? throw new InvalidOperationException(
                     "JWT Key is missing from configuration.");
@@ -29,9 +29,7 @@ namespace Sanay3y.API
                 ?? throw new InvalidOperationException(
                     "JWT Audience is missing from configuration.");
 
-            // قراءة اتصال قاعدة البيانات.
-            // يمكن تمرير ConnectionStrings__DefaultConnection
-            // كمتغير بيئة على Render.
+            // Database configuration
             var connectionString =
                 builder.Configuration.GetConnectionString(
                     "DefaultConnection")
@@ -41,12 +39,15 @@ namespace Sanay3y.API
             builder.Services.AddDbContext<ApplicationDbContext>(
                 options => options.UseSqlServer(connectionString));
 
-            // تسجيل الخدمات.
+            // Application services
             builder.Services.AddScoped<PasswordService>();
             builder.Services.AddScoped<JwtService>();
             builder.Services.AddScoped<OtpService>();
 
-            // إعداد المصادقة باستخدام JWT.
+            // Structured error responses
+            builder.Services.AddProblemDetails();
+
+            // JWT authentication
             builder.Services
                 .AddAuthentication(
                     JwtBearerDefaults.AuthenticationScheme)
@@ -72,23 +73,25 @@ namespace Sanay3y.API
                         };
                 });
 
-            // إعداد الصلاحيات.
+            // Authorization
             builder.Services.AddAuthorization();
 
-            // إعداد Controllers و OpenAPI.
+            // Controllers and API documentation
             builder.Services.AddControllers();
             builder.Services.AddOpenApi();
 
             var app = builder.Build();
 
-            // إتاحة OpenAPI و Scalar في بيئة التطوير فقط.
+            // Handle unhandled exceptions without exposing internals.
+            app.UseExceptionHandler();
+
+            // OpenAPI and Scalar are available only in Development.
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
                 app.MapScalarApiReference();
             }
 
-            // إعداد Middleware.
             app.UseHttpsRedirection();
 
             app.UseAuthentication();
