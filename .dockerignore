@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+**/.vs/
+**/Properties/PublishProfiles/
+**/*.user
+**/*.suo
+.git/
+.gitignore
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+Dockerfile*
+compose*.yml
+README.md
