@@ -1,5 +1,6 @@
 ﻿
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Sanay3y.API.Data;
@@ -27,6 +28,8 @@ namespace Sanay3y.API.Controllers
             _jwtService = jwtService;
         }
 
+        // Register a customer.
+        [EnableRateLimiting("RegisterPolicy")]
         [HttpPost("register")]
         public async Task<IActionResult> Register(
             RegisterRequest request)
@@ -89,19 +92,18 @@ namespace Sanay3y.API.Controllers
                 });
             }
 
-            return CreatedAtAction(
-                nameof(Register),
-                new { id = user.Id },
-                new
-                {
-                    message =
-                        "Registration created. Contact verification is required.",
-                    userId = user.Id,
-                    role = user.Role,
-                    accountStatus = user.AccountStatus
-                });
+            return StatusCode(201, new
+            {
+                message =
+                    "Registration created. Contact verification is required.",
+                userId = user.Id,
+                role = user.Role,
+                accountStatus = user.AccountStatus
+            });
         }
 
+        // Register an artisan.
+        [EnableRateLimiting("RegisterPolicy")]
         [HttpPost("register-artisan")]
         public async Task<IActionResult> RegisterArtisan(
             ArtisanRegisterRequest request)
@@ -185,6 +187,8 @@ namespace Sanay3y.API.Controllers
             });
         }
 
+        // Login.
+        [EnableRateLimiting("LoginPolicy")]
         [HttpPost("login")]
         public async Task<IActionResult> Login(
             LoginRequest request)
