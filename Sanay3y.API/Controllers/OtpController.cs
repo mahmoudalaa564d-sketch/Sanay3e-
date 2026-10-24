@@ -105,6 +105,7 @@ namespace Sanay3y.API.Controllers
 
             var now = DateTime.UtcNow;
 
+            // Keep the existing 60-second cooldown.
             var recentlyRequested =
                 await _context.OtpVerifications.AnyAsync(o =>
                     o.UserId == request.UserId &&
@@ -135,6 +136,7 @@ namespace Sanay3y.API.Controllers
             _context.OtpVerifications.Add(otp);
             await _context.SaveChangesAsync();
 
+            // Return the code for local development testing only.
             return Ok(new
             {
                 message = "OTP created for development testing.",
@@ -143,6 +145,7 @@ namespace Sanay3y.API.Controllers
             });
         }
 
+        // Verify an OTP with atomic attempt counting.
         [EnableRateLimiting("OtpVerifyPolicy")]
         [HttpPost("verify")]
         public async Task<IActionResult> VerifyOtp(
@@ -168,7 +171,76 @@ namespace Sanay3y.API.Controllers
                 });
             }
 
+            // Validate the contact before attempting verification.
+            if (request.Channel == "Email")
+            {
+                if (string.IsNullOrWhiteSpace(user.Email))
+                {
+                    return BadRequest(new
+                    {
+                        message =
+                            "No email is registered for this user."
+                    });
+                }
+
+                if (user.IsEmailVerified)
+                {
+                    return BadRequest(new
+                    {
+                        message = "Email is already verified."
+                    });
+                }
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(user.PhoneNumber))
+                {
+                    return BadRequest(new
+                    {
+                        message =
+                            "No phone number is registered for this user."
+                    });
+                }
+
+                if (user.IsPhoneVerified)
+                {
+                    return BadRequest(new
+                    {
+                        message = "Phone number is already verified."
+                    });
+                }
+            }
+
+            // Validate the account role before consuming the OTP.
+            if (user.Role == "Artisan")
+            {
+                var artisanProfileExists =
+                    await _context.ArtisanProfiles
+                        .AnyAsync(p => p.UserId == user.Id);
+
+                if (!artisanProfileExists)
+                {
+                    return BadRequest(new
+                    {
+                        message =
+                            "Artisan profile was not found. Contact support."
+                    });
+                }
+            }
+            else if (user.Role != "Customer")
+            {
+                return BadRequest(new
+                {
+                    message =
+                        "This account role cannot be activated through OTP verification."
+                });
+            }
+
+            var now = DateTime.UtcNow;
+
+            // Read without tracking because the OTP is updated atomically.
             var otp = await _context.OtpVerifications
+                .AsNoTracking()
                 .Where(o =>
                     o.UserId == request.UserId &&
                     o.Channel == request.Channel &&
@@ -184,8 +256,6 @@ namespace Sanay3y.API.Controllers
                         "No active verification code was found."
                 });
             }
-
-            var now = DateTime.UtcNow;
 
             if (otp.ExpiresAtUtc <= now)
             {
@@ -204,12 +274,42 @@ namespace Sanay3y.API.Controllers
                 });
             }
 
-            // Count each attempt, including a successful attempt.
-            otp.Attempts++;
+            await using var transaction =
+                await _context.Database.BeginTransactionAsync();
 
-            if (!_otpService.VerifyCode(request.Code, otp.CodeHash))
+            // Atomically increment only if the code is still unused,
+            // unexpired, and below the five-attempt limit.
+            var attemptsUpdated =
+                await _context.OtpVerifications
+                    .Where(o =>
+                        o.Id == otp.Id &&
+                        o.UserId == request.UserId &&
+                        o.Channel == request.Channel &&
+                        o.UsedAtUtc == null &&
+                        o.ExpiresAtUtc > now &&
+                        o.Attempts < 5)
+                    .ExecuteUpdateAsync(setters =>
+                        setters.SetProperty(
+                            o => o.Attempts,
+                            o => o.Attempts + 1));
+
+            if (attemptsUpdated != 1)
             {
-                await _context.SaveChangesAsync();
+                await transaction.RollbackAsync();
+
+                return BadRequest(new
+                {
+                    message =
+                        "The verification code is no longer valid. Request a new code."
+                });
+            }
+
+            // Save the attempt even when the submitted code is wrong.
+            if (!_otpService.VerifyCode(
+                    request.Code,
+                    otp.CodeHash))
+            {
+                await transaction.CommitAsync();
 
                 return BadRequest(new
                 {
@@ -217,68 +317,57 @@ namespace Sanay3y.API.Controllers
                 });
             }
 
+            // Consume the OTP only if it remains unused and valid.
+            var consumed =
+                await _context.OtpVerifications
+                    .Where(o =>
+                        o.Id == otp.Id &&
+                        o.UserId == request.UserId &&
+                        o.Channel == request.Channel &&
+                        o.UsedAtUtc == null &&
+                        o.ExpiresAtUtc > now)
+                    .ExecuteUpdateAsync(setters =>
+                        setters.SetProperty(
+                            o => o.UsedAtUtc,
+                            (DateTime?)now));
+
+            if (consumed != 1)
+            {
+                // Keep the attempt counted.
+                await transaction.CommitAsync();
+
+                return BadRequest(new
+                {
+                    message =
+                        "The verification code has already been used or expired."
+                });
+            }
+
+            // Update the contact verification state.
             if (request.Channel == "Email")
             {
-                if (string.IsNullOrWhiteSpace(user.Email))
-                {
-                    return BadRequest(new
-                    {
-                        message =
-                            "No email is registered for this user."
-                    });
-                }
-
                 user.IsEmailVerified = true;
             }
             else
             {
-                if (string.IsNullOrWhiteSpace(user.PhoneNumber))
-                {
-                    return BadRequest(new
-                    {
-                        message =
-                            "No phone number is registered for this user."
-                    });
-                }
-
                 user.IsPhoneVerified = true;
             }
 
-            // Prevent reuse of the verification code.
-            otp.UsedAtUtc = now;
-
+            // Customers activate after verification.
+            // Artisans still need admin approval.
             if (user.Role == "Customer")
             {
                 user.AccountStatus = "Active";
             }
-            else if (user.Role == "Artisan")
-            {
-                var artisanProfileExists =
-                    await _context.ArtisanProfiles
-                        .AnyAsync(p => p.UserId == user.Id);
-
-                if (!artisanProfileExists)
-                {
-                    return BadRequest(new
-                    {
-                        message =
-                            "Artisan profile was not found. Contact support."
-                    });
-                }
-
-                user.AccountStatus = "PendingApproval";
-            }
             else
             {
-                // Do not activate accounts with unexpected roles.
-                return BadRequest(new
-                {
-                    message =
-                        "This account role cannot be activated through OTP verification."
-                });
+                user.AccountStatus = "PendingApproval";
             }
 
             await _context.SaveChangesAsync();
+
+            // Commit OTP consumption and account activation together.
+            await transaction.CommitAsync();
 
             var responseMessage = user.Role == "Artisan"
                 ? "Contact verified successfully. Your account is waiting for admin approval."

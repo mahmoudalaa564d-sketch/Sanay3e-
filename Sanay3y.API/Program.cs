@@ -1,12 +1,17 @@
 
 using System;
+using System.Linq;
+using System.Security.Claims;
 using System.Text;
+using System.Threading;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using Sanay3y.API.Data;
@@ -20,7 +25,7 @@ namespace Sanay3y.API
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            // JWT configuration
+            // 1. JWT configuration
             var jwtKey = builder.Configuration["Jwt:Key"]
                 ?? throw new InvalidOperationException(
                     "JWT Key is missing from configuration.");
@@ -33,7 +38,7 @@ namespace Sanay3y.API
                 ?? throw new InvalidOperationException(
                     "JWT Audience is missing from configuration.");
 
-            // Database configuration
+            // 2. Database configuration
             var connectionString =
                 builder.Configuration.GetConnectionString(
                     "DefaultConnection")
@@ -43,15 +48,18 @@ namespace Sanay3y.API
             builder.Services.AddDbContext<ApplicationDbContext>(
                 options => options.UseSqlServer(connectionString));
 
-            // Application services
+            // 3. Application services
             builder.Services.AddScoped<PasswordService>();
             builder.Services.AddScoped<JwtService>();
             builder.Services.AddScoped<OtpService>();
 
-            // Structured error responses
+            // 4. Structured error responses
             builder.Services.AddProblemDetails();
 
-            // Rate limiting configuration
+            // 5. Health checks
+            builder.Services.AddHealthChecks();
+
+            // 6. Rate limiting configuration
             builder.Services.AddRateLimiter(options =>
             {
                 options.RejectionStatusCode =
@@ -89,8 +97,7 @@ namespace Sanay3y.API
                             AutoReplenishment = true
                         }));
 
-                // Customer and artisan registration:
-                // 5 requests per 10 minutes per IP
+                // Registration: 5 requests per 10 minutes per IP
                 options.AddPolicy("RegisterPolicy", context =>
                     RateLimitPartition.GetFixedWindowLimiter(
                         partitionKey:
@@ -133,7 +140,7 @@ namespace Sanay3y.API
                         }));
             });
 
-            // JWT authentication
+            // 7. JWT authentication
             builder.Services
                 .AddAuthentication(
                     JwtBearerDefaults.AuthenticationScheme)
@@ -157,37 +164,193 @@ namespace Sanay3y.API
 
                             ClockSkew = TimeSpan.FromSeconds(30)
                         };
+
+                    // Check current account status whenever a JWT
+                    // is successfully validated.
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnTokenValidated = async context =>
+                        {
+                            var principal = context.Principal;
+
+                            var userIdValue =
+                                principal?.FindFirstValue(
+                                    ClaimTypes.NameIdentifier)
+                                ?? principal?.FindFirstValue("sub");
+
+                            if (!int.TryParse(
+                                    userIdValue,
+                                    out var userId))
+                            {
+                                context.Fail(
+                                    "Invalid token identity.");
+                                return;
+                            }
+
+                            var dbContext =
+                                context.HttpContext.RequestServices
+                                    .GetRequiredService<
+                                        ApplicationDbContext>();
+
+                            Sanay3y.API.Models.User? user;
+
+                            try
+                            {
+                                user = await dbContext.Users
+                                    .AsNoTracking()
+                                    .FirstOrDefaultAsync(
+                                        u => u.Id == userId,
+                                        context.HttpContext
+                                            .RequestAborted);
+                            }
+                            catch (Exception ex)
+                                when (ex is not OperationCanceledException)
+                            {
+                                var logger =
+                                    context.HttpContext
+                                        .RequestServices
+                                        .GetRequiredService<
+                                            ILogger<Program>>();
+
+                                logger.LogError(
+                                    ex,
+                                    "Failed to validate account status for JWT.");
+
+                                // Fail closed if account status
+                                // cannot be checked.
+                                context.Fail(
+                                    "Account status could not be verified.");
+                                return;
+                            }
+
+                            if (user is null ||
+                                user.AccountStatus != "Active")
+                            {
+                                context.Fail("Account is inactive.");
+                                return;
+                            }
+
+                            // Refresh role from the database rather
+                            // than trusting an old JWT role.
+                            var identity =
+                                principal?.Identity as ClaimsIdentity;
+
+                            if (identity is null)
+                            {
+                                context.Fail(
+                                    "Invalid token identity.");
+                                return;
+                            }
+
+                            var oldRoleClaims = identity.Claims
+                                .Where(c =>
+                                    c.Type == ClaimTypes.Role ||
+                                    c.Type == "role" ||
+                                    c.Type == "roles")
+                                .ToList();
+
+                            foreach (var claim in oldRoleClaims)
+                            {
+                                identity.RemoveClaim(claim);
+                            }
+
+                            identity.AddClaim(
+                                new Claim(
+                                    ClaimTypes.Role,
+                                    user.Role));
+                        }
+                    };
                 });
 
-            // Authorization
+            // 8. Authorization
             builder.Services.AddAuthorization();
 
-            // Controllers and API documentation
+            // 9. Controllers and API documentation
             builder.Services.AddControllers();
             builder.Services.AddOpenApi();
 
             var app = builder.Build();
 
-            // Handle unhandled exceptions
+            // 10. Handle unexpected errors
             app.UseExceptionHandler();
 
-            // OpenAPI and Scalar are available only in Development
+            // 11. Security headers
+            app.Use(async (context, next) =>
+            {
+                context.Response.Headers["X-Content-Type-Options"] =
+                    "nosniff";
+
+                context.Response.Headers["X-Frame-Options"] =
+                    "DENY";
+
+                context.Response.Headers["Referrer-Policy"] =
+                    "no-referrer";
+
+                context.Response.Headers["Permissions-Policy"] =
+                    "camera=(), microphone=(), geolocation=()";
+
+                await next();
+            });
+
+            // 12. API documentation in Development only
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
                 app.MapScalarApiReference();
             }
 
+            // 13. Middleware pipeline
             app.UseHttpsRedirection();
 
-            // Routing must run before endpoint-specific rate limiting
             app.UseRouting();
             app.UseRateLimiter();
 
             app.UseAuthentication();
             app.UseAuthorization();
 
+            // 14. Application endpoints
             app.MapControllers();
+
+            // Liveness: confirms that the application responds.
+            app.MapHealthChecks("/health");
+
+            // Readiness: checks whether SQL Server is reachable.
+            // Do not expose connection details in the response.
+            app.MapGet(
+                "/health/ready",
+                async Task<IResult> (
+                    ApplicationDbContext dbContext,
+                    ILogger<Program> logger,
+                    CancellationToken cancellationToken) =>
+                {
+                    try
+                    {
+                        var canConnect =
+                            await dbContext.Database.CanConnectAsync(
+                                cancellationToken);
+
+                        if (!canConnect)
+                        {
+                            return Results.StatusCode(
+                                StatusCodes.Status503ServiceUnavailable);
+                        }
+
+                        return Results.Ok(new { status = "Ready" });
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(
+                            ex,
+                            "Database readiness check failed.");
+
+                        return Results.StatusCode(
+                            StatusCodes.Status503ServiceUnavailable);
+                    }
+                });
 
             app.Run();
         }
