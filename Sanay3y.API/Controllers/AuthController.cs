@@ -1,5 +1,6 @@
 ﻿
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Sanay3y.API.Data;
 using Sanay3y.API.DTOs;
@@ -27,18 +28,21 @@ namespace Sanay3y.API.Controllers
         }
 
         [HttpPost("register")]
-        public async Task<IActionResult> Register(RegisterRequest request)
+        public async Task<IActionResult> Register(
+            RegisterRequest request)
         {
             var email = string.IsNullOrWhiteSpace(request.Email)
                 ? null
                 : request.Email.Trim().ToLowerInvariant();
 
-            var phoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber)
-                ? null
-                : request.PhoneNumber.Trim();
+            var phoneNumber =
+                string.IsNullOrWhiteSpace(request.PhoneNumber)
+                    ? null
+                    : request.PhoneNumber.Trim();
 
             if (email is not null &&
-                await _context.Users.AnyAsync(u => u.Email == email))
+                await _context.Users.AnyAsync(
+                    u => u.Email == email))
             {
                 return Conflict(new
                 {
@@ -70,13 +74,28 @@ namespace Sanay3y.API.Controllers
             };
 
             _context.Users.Add(user);
-            await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(Register),
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex)
+                when (IsUniqueConstraintViolation(ex))
+            {
+                return Conflict(new
+                {
+                    message =
+                        "An account with this email or phone number is already registered."
+                });
+            }
+
+            return CreatedAtAction(
+                nameof(Register),
                 new { id = user.Id },
                 new
                 {
-                    message = "Registration created. Contact verification is required.",
+                    message =
+                        "Registration created. Contact verification is required.",
                     userId = user.Id,
                     role = user.Role,
                     accountStatus = user.AccountStatus
@@ -91,12 +110,14 @@ namespace Sanay3y.API.Controllers
                 ? null
                 : request.Email.Trim().ToLowerInvariant();
 
-            var phoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber)
-                ? null
-                : request.PhoneNumber.Trim();
+            var phoneNumber =
+                string.IsNullOrWhiteSpace(request.PhoneNumber)
+                    ? null
+                    : request.PhoneNumber.Trim();
 
             if (email is not null &&
-                await _context.Users.AnyAsync(u => u.Email == email))
+                await _context.Users.AnyAsync(
+                    u => u.Email == email))
             {
                 return Conflict(new
                 {
@@ -139,11 +160,24 @@ namespace Sanay3y.API.Controllers
             _context.Users.Add(user);
             _context.ArtisanProfiles.Add(artisanProfile);
 
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex)
+                when (IsUniqueConstraintViolation(ex))
+            {
+                return Conflict(new
+                {
+                    message =
+                        "An account with this email or phone number is already registered."
+                });
+            }
 
             return StatusCode(201, new
             {
-                message = "Artisan registration created. Verify your contact and wait for admin approval.",
+                message =
+                    "Artisan registration created. Verify your contact and wait for admin approval.",
                 userId = user.Id,
                 role = user.Role,
                 accountStatus = user.AccountStatus,
@@ -152,16 +186,17 @@ namespace Sanay3y.API.Controllers
         }
 
         [HttpPost("login")]
-        public async Task<IActionResult> Login(LoginRequest request)
+        public async Task<IActionResult> Login(
+            LoginRequest request)
         {
             var email = string.IsNullOrWhiteSpace(request.Email)
                 ? null
                 : request.Email.Trim().ToLowerInvariant();
 
-            var phoneNumber = string.IsNullOrWhiteSpace(
-                request.PhoneNumber)
-                ? null
-                : request.PhoneNumber.Trim();
+            var phoneNumber =
+                string.IsNullOrWhiteSpace(request.PhoneNumber)
+                    ? null
+                    : request.PhoneNumber.Trim();
 
             if (email is null && phoneNumber is null)
             {
@@ -183,7 +218,8 @@ namespace Sanay3y.API.Controllers
             {
                 return Unauthorized(new
                 {
-                    message = "Invalid email/phone number or password."
+                    message =
+                        "Invalid email/phone number or password."
                 });
             }
 
@@ -191,7 +227,8 @@ namespace Sanay3y.API.Controllers
             {
                 return Unauthorized(new
                 {
-                    message = "Your account is not active yet or is waiting for approval."
+                    message =
+                        "Your account is not active yet or is waiting for approval."
                 });
             }
 
@@ -211,6 +248,25 @@ namespace Sanay3y.API.Controllers
                     user.Role
                 }
             });
+        }
+
+        private static bool IsUniqueConstraintViolation(
+            DbUpdateException exception)
+        {
+            for (
+                Exception? current = exception;
+                current is not null;
+                current = current.InnerException)
+            {
+                if (current is SqlException sqlException &&
+                    (sqlException.Number == 2601 ||
+                     sqlException.Number == 2627))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }
