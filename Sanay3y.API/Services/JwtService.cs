@@ -1,4 +1,6 @@
-﻿using System;
+﻿
+using System;
+using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -49,11 +51,17 @@ namespace Sanay3y.API.Services
                 securityKey,
                 SecurityAlgorithms.HmacSha256);
 
-            Claim[] claims =
+            var claims = new List<Claim>
             {
                 new Claim(
                     JwtRegisteredClaimNames.Sub,
                     user.Id.ToString()),
+
+                new Claim(
+                    ClaimTypes.Name,
+                    string.IsNullOrWhiteSpace(user.FullName)
+                        ? user.Id.ToString()
+                        : user.FullName),
 
                 new Claim(
                     ClaimTypes.Role,
@@ -61,6 +69,20 @@ namespace Sanay3y.API.Services
                         ? "Customer"
                         : user.Role)
             };
+
+            // Add email when available.
+            if (!string.IsNullOrWhiteSpace(user.Email))
+            {
+                claims.Add(
+                    new Claim(ClaimTypes.Email, user.Email));
+            }
+
+            // Add phone number when available.
+            if (!string.IsNullOrWhiteSpace(user.PhoneNumber))
+            {
+                claims.Add(
+                    new Claim("phoneNumber", user.PhoneNumber));
+            }
 
             var token = new JwtSecurityToken(
                 issuer: issuer,

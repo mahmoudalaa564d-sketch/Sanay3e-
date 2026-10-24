@@ -18,9 +18,13 @@ namespace Sanay3y.API.Controllers
                 id = User.FindFirstValue(ClaimTypes.NameIdentifier)
                     ?? User.FindFirstValue("sub"),
 
-                fullName = User.Identity?.Name,
+                fullName = User.FindFirstValue(ClaimTypes.Name)
+                    ?? User.Identity?.Name,
 
-                email = User.FindFirstValue("email"),
+                phoneNumber = User.FindFirstValue("phoneNumber"),
+
+                email = User.FindFirstValue(ClaimTypes.Email)
+                    ?? User.FindFirstValue("email"),
 
                 role = User.FindFirstValue(ClaimTypes.Role)
             });
