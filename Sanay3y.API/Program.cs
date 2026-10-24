@@ -1,7 +1,11 @@
 
 using System;
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
@@ -47,6 +51,88 @@ namespace Sanay3y.API
             // Structured error responses
             builder.Services.AddProblemDetails();
 
+            // Rate limiting configuration
+            builder.Services.AddRateLimiter(options =>
+            {
+                options.RejectionStatusCode =
+                    StatusCodes.Status429TooManyRequests;
+
+                options.OnRejected = async (
+                    context, cancellationToken) =>
+                {
+                    context.HttpContext.Response.StatusCode =
+                        StatusCodes.Status429TooManyRequests;
+
+                    await context.HttpContext.Response.WriteAsJsonAsync(
+                        new ProblemDetails
+                        {
+                            Status =
+                                StatusCodes.Status429TooManyRequests,
+                            Title = "Too many requests",
+                            Detail =
+                                "Please wait before trying again."
+                        },
+                        cancellationToken: cancellationToken);
+                };
+
+                // Login: 5 requests per minute per IP
+                options.AddPolicy("LoginPolicy", context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey:
+                            context.Connection.RemoteIpAddress?.ToString()
+                            ?? "unknown",
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 5,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0,
+                            AutoReplenishment = true
+                        }));
+
+                // Customer and artisan registration:
+                // 5 requests per 10 minutes per IP
+                options.AddPolicy("RegisterPolicy", context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey:
+                            context.Connection.RemoteIpAddress?.ToString()
+                            ?? "unknown",
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 5,
+                            Window = TimeSpan.FromMinutes(10),
+                            QueueLimit = 0,
+                            AutoReplenishment = true
+                        }));
+
+                // Request OTP: 3 requests per 5 minutes per IP
+                options.AddPolicy("OtpRequestPolicy", context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey:
+                            context.Connection.RemoteIpAddress?.ToString()
+                            ?? "unknown",
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 3,
+                            Window = TimeSpan.FromMinutes(5),
+                            QueueLimit = 0,
+                            AutoReplenishment = true
+                        }));
+
+                // Verify OTP: 5 requests per 5 minutes per IP
+                options.AddPolicy("OtpVerifyPolicy", context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey:
+                            context.Connection.RemoteIpAddress?.ToString()
+                            ?? "unknown",
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 5,
+                            Window = TimeSpan.FromMinutes(5),
+                            QueueLimit = 0,
+                            AutoReplenishment = true
+                        }));
+            });
+
             // JWT authentication
             builder.Services
                 .AddAuthentication(
@@ -82,10 +168,10 @@ namespace Sanay3y.API
 
             var app = builder.Build();
 
-            // Handle unhandled exceptions without exposing internals.
+            // Handle unhandled exceptions
             app.UseExceptionHandler();
 
-            // OpenAPI and Scalar are available only in Development.
+            // OpenAPI and Scalar are available only in Development
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
@@ -93,6 +179,10 @@ namespace Sanay3y.API
             }
 
             app.UseHttpsRedirection();
+
+            // Routing must run before endpoint-specific rate limiting
+            app.UseRouting();
+            app.UseRateLimiter();
 
             app.UseAuthentication();
             app.UseAuthorization();

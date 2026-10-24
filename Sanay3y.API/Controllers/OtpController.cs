@@ -1,8 +1,10 @@
 ﻿
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Sanay3y.API.Data;
 using Sanay3y.API.DTOs;
@@ -30,12 +32,12 @@ namespace Sanay3y.API.Controllers
         }
 
         // Request an OTP for a registered contact.
+        [EnableRateLimiting("OtpRequestPolicy")]
         [HttpPost("request")]
         public async Task<IActionResult> RequestOtp(
             RequestOtpRequest request)
         {
-            // Real email/SMS delivery has not been configured yet.
-            // This endpoint is available for local development only.
+            // Real email/SMS delivery is not configured yet.
             if (!_environment.IsDevelopment())
             {
                 return StatusCode(501, new
@@ -61,7 +63,8 @@ namespace Sanay3y.API.Controllers
                 {
                     return BadRequest(new
                     {
-                        message = "No email is registered for this user."
+                        message =
+                            "No email is registered for this user."
                     });
                 }
 
@@ -79,7 +82,8 @@ namespace Sanay3y.API.Controllers
                 {
                     return BadRequest(new
                     {
-                        message = "No phone number is registered for this user."
+                        message =
+                            "No phone number is registered for this user."
                     });
                 }
 
@@ -101,7 +105,6 @@ namespace Sanay3y.API.Controllers
 
             var now = DateTime.UtcNow;
 
-            // Allow one OTP request per user and channel every 60 seconds.
             var recentlyRequested =
                 await _context.OtpVerifications.AnyAsync(o =>
                     o.UserId == request.UserId &&
@@ -132,7 +135,6 @@ namespace Sanay3y.API.Controllers
             _context.OtpVerifications.Add(otp);
             await _context.SaveChangesAsync();
 
-            // Development only: return the code for local testing.
             return Ok(new
             {
                 message = "OTP created for development testing.",
@@ -141,12 +143,11 @@ namespace Sanay3y.API.Controllers
             });
         }
 
-        // Verify an OTP.
+        [EnableRateLimiting("OtpVerifyPolicy")]
         [HttpPost("verify")]
         public async Task<IActionResult> VerifyOtp(
             VerifyOtpRequest request)
         {
-            // Validate the channel explicitly.
             if (request.Channel != "Email" &&
                 request.Channel != "Phone")
             {
@@ -167,7 +168,6 @@ namespace Sanay3y.API.Controllers
                 });
             }
 
-            // Find the latest unused code for this user and channel.
             var otp = await _context.OtpVerifications
                 .Where(o =>
                     o.UserId == request.UserId &&
@@ -180,7 +180,8 @@ namespace Sanay3y.API.Controllers
             {
                 return BadRequest(new
                 {
-                    message = "No active verification code was found."
+                    message =
+                        "No active verification code was found."
                 });
             }
 
@@ -198,7 +199,8 @@ namespace Sanay3y.API.Controllers
             {
                 return BadRequest(new
                 {
-                    message = "Too many attempts. Request a new code later."
+                    message =
+                        "Too many attempts. Request a new code later."
                 });
             }
 
@@ -215,14 +217,14 @@ namespace Sanay3y.API.Controllers
                 });
             }
 
-            // Make sure the contact exists before marking it verified.
             if (request.Channel == "Email")
             {
                 if (string.IsNullOrWhiteSpace(user.Email))
                 {
                     return BadRequest(new
                     {
-                        message = "No email is registered for this user."
+                        message =
+                            "No email is registered for this user."
                     });
                 }
 
@@ -234,18 +236,17 @@ namespace Sanay3y.API.Controllers
                 {
                     return BadRequest(new
                     {
-                        message = "No phone number is registered for this user."
+                        message =
+                            "No phone number is registered for this user."
                     });
                 }
 
                 user.IsPhoneVerified = true;
             }
 
-            // Mark the OTP as used so it cannot be reused.
+            // Prevent reuse of the verification code.
             otp.UsedAtUtc = now;
 
-            // Customers can become active after contact verification.
-            // Artisans must wait for admin approval.
             if (user.Role == "Customer")
             {
                 user.AccountStatus = "Active";
@@ -258,7 +259,6 @@ namespace Sanay3y.API.Controllers
 
                 if (!artisanProfileExists)
                 {
-                    // Do not activate an artisan without a profile.
                     return BadRequest(new
                     {
                         message =
