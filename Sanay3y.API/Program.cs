@@ -57,7 +57,6 @@ namespace Sanay3y.API
             builder.Services.AddProblemDetails();
 
             // 5. Health checks
-            // This basic check confirms that the application is running.
             builder.Services.AddHealthChecks();
 
             // 6. Rate limiting configuration
@@ -166,8 +165,8 @@ namespace Sanay3y.API
                             ClockSkew = TimeSpan.FromSeconds(30)
                         };
 
-                    // Check the current account status for every
-                    // successfully validated JWT.
+                    // Check current account status whenever a JWT
+                    // is successfully validated.
                     options.Events = new JwtBearerEvents
                     {
                         OnTokenValidated = async context =>
@@ -217,8 +216,8 @@ namespace Sanay3y.API
                                     ex,
                                     "Failed to validate account status for JWT.");
 
-                                // Fail closed when account status
-                                // cannot be verified.
+                                // Fail closed if account status
+                                // cannot be checked.
                                 context.Fail(
                                     "Account status could not be verified.");
                                 return;
@@ -231,7 +230,8 @@ namespace Sanay3y.API
                                 return;
                             }
 
-                            // Refresh role claims from the database.
+                            // Refresh role from the database rather
+                            // than trusting an old JWT role.
                             var identity =
                                 principal?.Identity as ClaimsIdentity;
 
@@ -292,7 +292,7 @@ namespace Sanay3y.API
                 await next();
             });
 
-            // 12. OpenAPI and Scalar in Development only
+            // 12. API documentation in Development only
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
@@ -308,10 +308,49 @@ namespace Sanay3y.API
             app.UseAuthentication();
             app.UseAuthorization();
 
-            // 14. API endpoints
+            // 14. Application endpoints
             app.MapControllers();
 
+            // Liveness: confirms that the application responds.
             app.MapHealthChecks("/health");
+
+            // Readiness: checks whether SQL Server is reachable.
+            // Do not expose connection details in the response.
+            app.MapGet(
+                "/health/ready",
+                async Task<IResult> (
+                    ApplicationDbContext dbContext,
+                    ILogger<Program> logger,
+                    CancellationToken cancellationToken) =>
+                {
+                    try
+                    {
+                        var canConnect =
+                            await dbContext.Database.CanConnectAsync(
+                                cancellationToken);
+
+                        if (!canConnect)
+                        {
+                            return Results.StatusCode(
+                                StatusCodes.Status503ServiceUnavailable);
+                        }
+
+                        return Results.Ok(new { status = "Ready" });
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(
+                            ex,
+                            "Database readiness check failed.");
+
+                        return Results.StatusCode(
+                            StatusCodes.Status503ServiceUnavailable);
+                    }
+                });
 
             app.Run();
         }
