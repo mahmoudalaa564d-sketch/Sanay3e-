@@ -20,12 +20,21 @@ namespace Sanay3y.API.Data
         public DbSet<OtpVerification> OtpVerifications
             => Set<OtpVerification>();
 
+        public DbSet<ArtisanSpecialty> ArtisanSpecialties
+            => Set<ArtisanSpecialty>();
+
+        public DbSet<ArtisanServiceType> ArtisanServiceTypes
+            => Set<ArtisanServiceType>();
+
+        public DbSet<ArtisanServiceArea> ArtisanServiceAreas
+            => Set<ArtisanServiceArea>();
+
         protected override void OnModelCreating(
             ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
-            // إعداد جدول المستخدمين.
+            // Users
             modelBuilder.Entity<User>(entity =>
             {
                 entity.ToTable("Users", table =>
@@ -72,7 +81,7 @@ namespace Sanay3y.API.Data
                     .HasFilter("[PhoneNumber] IS NOT NULL");
             });
 
-            // إعداد جدول ملفات الصنايعية.
+            // Artisan profiles
             modelBuilder.Entity<ArtisanProfile>(entity =>
             {
                 entity.ToTable("ArtisanProfiles", table =>
@@ -88,9 +97,40 @@ namespace Sanay3y.API.Data
                     .HasMaxLength(100)
                     .IsRequired();
 
+                entity.Property(p => p.ExperienceYears)
+                    .IsRequired();
+
                 entity.Property(p => p.ServiceArea)
                     .HasMaxLength(200)
                     .IsRequired();
+
+                entity.Property(p => p.Bio)
+                    .HasMaxLength(1500);
+
+                entity.Property(p => p.ProfileImagePath)
+                    .HasMaxLength(300);
+
+                entity.Property(p => p.NationalIdFrontPath)
+                    .HasMaxLength(300);
+
+                entity.Property(p => p.NationalIdBackPath)
+                    .HasMaxLength(300);
+
+                entity.Property(p => p.Governorate)
+                    .HasMaxLength(100);
+
+                entity.Property(p => p.Center)
+                    .HasMaxLength(100);
+
+                entity.Property(p => p.Village)
+                    .HasMaxLength(100);
+
+                entity.Property(p => p.TermsAccepted)
+                    .HasDefaultValue(false)
+                    .IsRequired();
+
+                entity.Property(p => p.TermsVersion)
+                    .HasMaxLength(30);
 
                 entity.Property(p => p.ApprovalStatus)
                     .HasMaxLength(20)
@@ -100,23 +140,101 @@ namespace Sanay3y.API.Data
                 entity.Property(p => p.RejectionReason)
                     .HasMaxLength(500);
 
-                // كل صنايعي له ملف واحد.
                 entity.HasOne(p => p.User)
                     .WithOne(u => u.ArtisanProfile)
-                    .HasForeignKey<ArtisanProfile>(
-                        p => p.UserId)
+                    .HasForeignKey<ArtisanProfile>(p => p.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
 
-                // الأدمن الذي راجع طلب الصنايعي.
                 entity.HasOne(p => p.ReviewedByAdmin)
                     .WithMany(u => u.ReviewedArtisanProfiles)
                     .HasForeignKey(p => p.ReviewedByAdminId)
                     .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasIndex(p => p.ApprovalStatus);
+
+                entity.HasIndex(p => p.ReviewedByAdminId);
+
+                entity.HasMany(p => p.Specialties)
+                    .WithOne(s => s.ArtisanProfile)
+                    .HasForeignKey(s => s.ArtisanUserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasMany(p => p.ServiceTypes)
+                    .WithOne(s => s.ArtisanProfile)
+                    .HasForeignKey(s => s.ArtisanUserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasMany(p => p.NearbyServiceAreas)
+                    .WithOne(a => a.ArtisanProfile)
+                    .HasForeignKey(a => a.ArtisanUserId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
-            // إعداد جدول أكواد التحقق.
+            // Artisan specialties
+            modelBuilder.Entity<ArtisanSpecialty>(entity =>
+            {
+                entity.ToTable("ArtisanSpecialties");
+
+                entity.HasKey(s => s.Id);
+
+                entity.Property(s => s.Name)
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.HasIndex(s => new
+                {
+                    s.ArtisanUserId,
+                    s.Name
+                }).IsUnique();
+            });
+
+            // Types of services offered by an artisan
+            modelBuilder.Entity<ArtisanServiceType>(entity =>
+            {
+                entity.ToTable("ArtisanServiceTypes");
+
+                entity.HasKey(s => s.Id);
+
+                entity.Property(s => s.Name)
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.HasIndex(s => new
+                {
+                    s.ArtisanUserId,
+                    s.Name
+                }).IsUnique();
+            });
+
+            // Additional service areas
+            modelBuilder.Entity<ArtisanServiceArea>(entity =>
+            {
+                entity.ToTable("ArtisanServiceAreas");
+
+                entity.HasKey(a => a.Id);
+
+                entity.Property(a => a.Governorate)
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.Property(a => a.Center)
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.Property(a => a.Village)
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.HasIndex(a => new
+                {
+                    a.ArtisanUserId,
+                    a.Governorate,
+                    a.Center,
+                    a.Village
+                }).IsUnique();
+            });
+
+            // OTP verifications
             modelBuilder.Entity<OtpVerification>(entity =>
             {
                 entity.ToTable("OtpVerifications", table =>
