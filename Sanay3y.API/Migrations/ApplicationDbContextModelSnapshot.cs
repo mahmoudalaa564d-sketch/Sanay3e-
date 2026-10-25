@@ -34,13 +34,37 @@ namespace Sanay3y.API.Migrations
                         .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("Pending");
 
+                    b.Property<string>("Bio")
+                        .HasMaxLength(1500)
+                        .HasColumnType("nvarchar(1500)");
+
+                    b.Property<string>("Center")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<int>("ExperienceYears")
                         .HasColumnType("int");
+
+                    b.Property<string>("Governorate")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("NationalIdBackPath")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("NationalIdFrontPath")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
 
                     b.Property<string>("Profession")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ProfileImagePath")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
 
                     b.Property<string>("RejectionReason")
                         .HasMaxLength(500)
@@ -57,6 +81,22 @@ namespace Sanay3y.API.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<bool>("TermsAccepted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime?>("TermsAcceptedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TermsVersion")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Village")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.HasKey("UserId");
 
                     b.HasIndex("ApprovalStatus");
@@ -67,6 +107,88 @@ namespace Sanay3y.API.Migrations
                         {
                             t.HasCheckConstraint("CK_ArtisanProfiles_ExperienceYears", "[ExperienceYears] >= 0");
                         });
+                });
+
+            modelBuilder.Entity("Sanay3y.API.Models.ArtisanServiceArea", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ArtisanUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Center")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Governorate")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Village")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ArtisanUserId", "Governorate", "Center", "Village")
+                        .IsUnique();
+
+                    b.ToTable("ArtisanServiceAreas", (string)null);
+                });
+
+            modelBuilder.Entity("Sanay3y.API.Models.ArtisanServiceType", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ArtisanUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ArtisanUserId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("ArtisanServiceTypes", (string)null);
+                });
+
+            modelBuilder.Entity("Sanay3y.API.Models.ArtisanSpecialty", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ArtisanUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ArtisanUserId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("ArtisanSpecialties", (string)null);
                 });
 
             modelBuilder.Entity("Sanay3y.API.Models.OtpVerification", b =>
@@ -199,6 +321,39 @@ namespace Sanay3y.API.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Sanay3y.API.Models.ArtisanServiceArea", b =>
+                {
+                    b.HasOne("Sanay3y.API.Models.ArtisanProfile", "ArtisanProfile")
+                        .WithMany("NearbyServiceAreas")
+                        .HasForeignKey("ArtisanUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ArtisanProfile");
+                });
+
+            modelBuilder.Entity("Sanay3y.API.Models.ArtisanServiceType", b =>
+                {
+                    b.HasOne("Sanay3y.API.Models.ArtisanProfile", "ArtisanProfile")
+                        .WithMany("ServiceTypes")
+                        .HasForeignKey("ArtisanUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ArtisanProfile");
+                });
+
+            modelBuilder.Entity("Sanay3y.API.Models.ArtisanSpecialty", b =>
+                {
+                    b.HasOne("Sanay3y.API.Models.ArtisanProfile", "ArtisanProfile")
+                        .WithMany("Specialties")
+                        .HasForeignKey("ArtisanUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ArtisanProfile");
+                });
+
             modelBuilder.Entity("Sanay3y.API.Models.OtpVerification", b =>
                 {
                     b.HasOne("Sanay3y.API.Models.User", "User")
@@ -208,6 +363,15 @@ namespace Sanay3y.API.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Sanay3y.API.Models.ArtisanProfile", b =>
+                {
+                    b.Navigation("NearbyServiceAreas");
+
+                    b.Navigation("ServiceTypes");
+
+                    b.Navigation("Specialties");
                 });
 
             modelBuilder.Entity("Sanay3y.API.Models.User", b =>

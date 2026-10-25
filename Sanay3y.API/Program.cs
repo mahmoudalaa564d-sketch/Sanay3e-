@@ -52,7 +52,7 @@ namespace Sanay3y.API
             builder.Services.AddScoped<PasswordService>();
             builder.Services.AddScoped<JwtService>();
             builder.Services.AddScoped<OtpService>();
-
+            builder.Services.AddSingleton<PrivateFileStorageService>();
             // 4. Structured error responses
             builder.Services.AddProblemDetails();
 
