@@ -29,6 +29,14 @@ namespace Sanay3y.API.Data
         public DbSet<ArtisanServiceArea> ArtisanServiceAreas
             => Set<ArtisanServiceArea>();
 
+        // Master list of platform specialties
+        public DbSet<Specialty> Specialties
+            => Set<Specialty>();
+
+        // Database-driven homepage content
+        public DbSet<HomePageContent> HomePageContents
+            => Set<HomePageContent>();
+
         protected override void OnModelCreating(
             ModelBuilder modelBuilder)
         {
@@ -170,7 +178,7 @@ namespace Sanay3y.API.Data
                     .OnDelete(DeleteBehavior.Cascade);
             });
 
-            // Artisan specialties
+            // Existing specialties assigned to individual artisans
             modelBuilder.Entity<ArtisanSpecialty>(entity =>
             {
                 entity.ToTable("ArtisanSpecialties");
@@ -271,6 +279,116 @@ namespace Sanay3y.API.Data
                     o.Channel,
                     o.ExpiresAtUtc
                 });
+            });
+
+            // Master specialties catalog
+            modelBuilder.Entity<Specialty>(entity =>
+            {
+                entity.ToTable("Specialties");
+
+                entity.HasKey(s => s.Id);
+
+                entity.Property(s => s.Name)
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.Property(s => s.NameEn)
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.Property(s => s.Description)
+                    .HasMaxLength(500);
+
+                entity.Property(s => s.IsActive)
+                    .HasDefaultValue(true)
+                    .IsRequired();
+
+                entity.Property(s => s.SortOrder)
+                    .IsRequired();
+
+                entity.Property(s => s.CreatedAtUtc)
+                    .HasDefaultValueSql("SYSUTCDATETIME()")
+                    .IsRequired();
+
+                entity.HasIndex(s => s.Name)
+                    .IsUnique();
+
+                entity.HasIndex(s => s.NameEn)
+                    .IsUnique();
+            });
+
+            // Homepage content stored in the database
+            modelBuilder.Entity<HomePageContent>(entity =>
+            {
+                entity.ToTable("HomePageContents");
+
+                entity.HasKey(h => h.Id);
+
+                entity.Property(h => h.PlatformName)
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.Property(h => h.HeroTitle)
+                    .HasMaxLength(250)
+                    .IsRequired();
+
+                entity.Property(h => h.HeroDescription)
+                    .HasMaxLength(1000)
+                    .IsRequired();
+
+                entity.Property(h => h.AboutTitle)
+                    .HasMaxLength(250)
+                    .IsRequired();
+
+                entity.Property(h => h.AboutDescription)
+                    .HasMaxLength(1500)
+                    .IsRequired();
+
+                entity.Property(h => h.WhyUsTitle)
+                    .HasMaxLength(250)
+                    .IsRequired();
+
+                entity.Property(h => h.WhyUsDescription)
+                    .HasMaxLength(1000)
+                    .IsRequired();
+
+                entity.Property(h => h.HowItWorksTitle)
+                    .HasMaxLength(250)
+                    .IsRequired();
+
+                entity.Property(h => h.Step1Title)
+                    .HasMaxLength(250)
+                    .IsRequired();
+
+                entity.Property(h => h.Step2Title)
+                    .HasMaxLength(250)
+                    .IsRequired();
+
+                entity.Property(h => h.Step3Title)
+                    .HasMaxLength(250)
+                    .IsRequired();
+
+                entity.Property(h => h.ContactEmail)
+                    .HasMaxLength(256);
+
+                entity.Property(h => h.ContactPhone)
+                    .HasMaxLength(20);
+
+                entity.Property(h => h.PrivacyPolicyText)
+                    .HasMaxLength(150)
+                    .IsRequired();
+
+                entity.Property(h => h.TermsText)
+                    .HasMaxLength(150)
+                    .IsRequired();
+
+                entity.Property(h => h.FaqText)
+                    .HasMaxLength(150)
+                    .IsRequired();
+
+                entity.Property(h => h.CopyrightText)
+                    .HasMaxLength(200)
+                    .IsRequired();
             });
         }
     }
