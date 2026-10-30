@@ -111,7 +111,7 @@ namespace Sanay3y.API.Controllers
             {
                 message =
                     "Registration created. Contact verification is required.",
-                userId = user.Id,
+                userId = user.Id,//ll
                 role = user.Role,
                 accountStatus = user.AccountStatus
             });
@@ -393,7 +393,10 @@ namespace Sanay3y.API.Controllers
                 return Unauthorized(new
                 {
                     message =
-                        "Your account is not active yet or is waiting for approval."
+                        "Your account is not active yet or is waiting for approval.",
+                        userId = user.Id,
+                    role = user.Role,
+                    accountStatus = user.AccountStatus
                 });
             }
 

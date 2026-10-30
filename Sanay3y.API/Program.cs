@@ -24,7 +24,16 @@ namespace Sanay3y.API
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
-
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowFrontend", policy =>
+                {
+                    policy
+                        .WithOrigins("http://localhost:5173")
+                        .AllowAnyHeader()
+                        .AllowAnyMethod();
+                });
+            });
             // 1. JWT configuration
             var jwtKey = builder.Configuration["Jwt:Key"]
                 ?? throw new InvalidOperationException(
@@ -304,7 +313,7 @@ namespace Sanay3y.API
 
             app.UseRouting();
             app.UseRateLimiter();
-
+            app.UseCors("AllowFrontend");
             app.UseAuthentication();
             app.UseAuthorization();
 
