@@ -61,7 +61,12 @@ namespace Sanay3y.API
             builder.Services.AddScoped<PasswordService>();
             builder.Services.AddScoped<JwtService>();
             builder.Services.AddScoped<OtpService>();
+
             builder.Services.AddSingleton<PrivateFileStorageService>();
+
+            // HTTP client for external APIs, including Paymob
+            builder.Services.AddHttpClient();
+
             // 4. Structured error responses
             builder.Services.AddProblemDetails();
 
@@ -165,17 +170,24 @@ namespace Sanay3y.API
                             ValidAudience = jwtAudience,
 
                             ValidateLifetime = true,
+                            RequireExpirationTime = true,
 
                             ValidateIssuerSigningKey = true,
                             IssuerSigningKey =
                                 new SymmetricSecurityKey(
                                     Encoding.UTF8.GetBytes(jwtKey)),
 
+                            // Accept only the algorithm used by JwtService
+                            ValidAlgorithms = new[]
+                            {
+                                SecurityAlgorithms.HmacSha256
+                            },
+
                             ClockSkew = TimeSpan.FromSeconds(30)
                         };
 
-                    // Check current account status whenever a JWT
-                    // is successfully validated.
+                    // Check the user's current account status
+                    // whenever a JWT is validated.
                     options.Events = new JwtBearerEvents
                     {
                         OnTokenValidated = async context =>
@@ -239,8 +251,8 @@ namespace Sanay3y.API
                                 return;
                             }
 
-                            // Refresh role from the database rather
-                            // than trusting an old JWT role.
+                            // Refresh role from the database instead
+                            // of trusting an old JWT role claim.
                             var identity =
                                 principal?.Identity as ClaimsIdentity;
 
@@ -301,14 +313,20 @@ namespace Sanay3y.API
                 await next();
             });
 
-            // 12. API documentation in Development only
+            // 12. HSTS in production only
+            if (!app.Environment.IsDevelopment())
+            {
+                app.UseHsts();
+            }
+
+            // 13. API documentation in Development only
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
                 app.MapScalarApiReference();
             }
 
-            // 13. Middleware pipeline
+            // 14. Middleware pipeline
             app.UseHttpsRedirection();
 
             app.UseRouting();
@@ -317,14 +335,13 @@ namespace Sanay3y.API
             app.UseAuthentication();
             app.UseAuthorization();
 
-            // 14. Application endpoints
+            // 15. Application endpoints
             app.MapControllers();
 
-            // Liveness: confirms that the application responds.
+            // Liveness: confirms the application responds
             app.MapHealthChecks("/health");
 
-            // Readiness: checks whether SQL Server is reachable.
-            // Do not expose connection details in the response.
+            // Readiness: checks SQL Server connectivity
             app.MapGet(
                 "/health/ready",
                 async Task<IResult> (
