@@ -24,7 +24,17 @@ namespace Sanay3y.API
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
-
+            // CORS: Allow the React frontend
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowFrontend", policy =>
+                {
+                    policy
+                        .WithOrigins("http://localhost:5173")
+                        .AllowAnyHeader()
+                        .AllowAnyMethod();
+                });
+            });
             // 1. JWT configuration
             var jwtKey = builder.Configuration["Jwt:Key"]
                 ?? throw new InvalidOperationException(
@@ -303,6 +313,10 @@ namespace Sanay3y.API
             app.UseHttpsRedirection();
 
             app.UseRouting();
+
+            // CORS must run before authentication and authorization.
+            app.UseCors("AllowFrontend");
+
             app.UseRateLimiter();
 
             app.UseAuthentication();
