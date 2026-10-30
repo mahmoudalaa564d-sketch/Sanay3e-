@@ -392,12 +392,11 @@ namespace Sanay3y.API.Controllers
             {
                 return Unauthorized(new
                 {
-                    message = "Your account is not active yet or is waiting for approval.",
-                    userId = user.Id,
-                    role = user.Role,
-                    accountStatus = user.AccountStatus
+                    message =
+                        "Your account is not active yet or is waiting for approval."
                 });
             }
+
             var token = _jwtService.GenerateToken(user);
 
             return Ok(new
