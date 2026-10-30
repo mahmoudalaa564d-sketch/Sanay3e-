@@ -111,7 +111,7 @@ namespace Sanay3y.API.Controllers
             {
                 message =
                     "Registration created. Contact verification is required.",
-                userId = user.Id,
+                userId = user.Id,//ll
                 role = user.Role,
                 accountStatus = user.AccountStatus
             });
